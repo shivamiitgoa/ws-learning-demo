@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WS Chat - WebSocket Demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 700; color: #f1f5f9; }
+  header h1 span { color: #38bdf8; }
+
+  #status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #64748b;
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+  #status-dot.connected { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  #status-dot.disconnected { background: #ef4444; }
+
+  #status-text { font-size: 0.78rem; color: #94a3b8; margin-right: auto; }
+  #online-count { font-size: 0.78rem; color: #94a3b8; }
+
+  /* ── Layout ── */
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  aside {
+    width: 180px;
+    background: #1e293b;
+    border-right: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  aside h2 {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    padding: 12px 14px 8px;
+  }
+  #user-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+  }
+  .user-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.83rem;
+    transition: background 0.15s;
+  }
+  .user-item:hover { background: #273349; }
+  .user-avatar {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .user-item.me { font-weight: 600; }
+
+  /* ── Debug panel ── */
+  details {
+    border-top: 1px solid #334155;
+    font-size: 0.72rem;
+  }
+  summary {
+    padding: 8px 14px;
+    cursor: pointer;
+    color: #64748b;
+    user-select: none;
+  }
+  summary:hover { color: #94a3b8; }
+  #ws-log {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 0 10px 8px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+  #ws-log .log-sent { color: #38bdf8; }
+  #ws-log .log-recv { color: #a78bfa; }
+  #ws-log .log-sys  { color: #64748b; }
+
+  /* ── Messages area ── */
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    scroll-behavior: smooth;
+  }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 70%;
+    gap: 2px;
+  }
+  .msg.mine { align-self: flex-end; align-items: flex-end; }
+  .msg.other { align-self: flex-start; }
+  .msg.system { align-self: center; max-width: 90%; }
+
+  .msg-meta {
+    font-size: 0.7rem;
+    color: #64748b;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .msg-author { font-weight: 600; }
+
+  .msg-bubble {
+    padding: 8px 14px;
+    border-radius: 14px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .msg.mine .msg-bubble {
+    background: #1d4ed8;
+    border-bottom-right-radius: 4px;
+    color: #eff6ff;
+  }
+  .msg.other .msg-bubble {
+    background: #1e293b;
+    border-bottom-left-radius: 4px;
+    border: 1px solid #334155;
+  }
+  .msg.system .msg-bubble {
+    background: transparent;
+    color: #64748b;
+    font-size: 0.78rem;
+    font-style: italic;
+    border: none;
+    padding: 2px 0;
+  }
+
+  /* ── Input bar ── */
+  footer {
+    padding: 12px 16px;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #input {
+    flex: 1;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #e2e8f0;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #input:focus { border-color: #38bdf8; }
+  #input::placeholder { color: #475569; }
+
+  #send-btn {
+    background: #1d4ed8;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #send-btn:hover:not(:disabled) { background: #2563eb; }
+  #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .hint {
+    font-size: 0.7rem;
+    color: #475569;
+    padding: 0 16px 6px;
+    flex-shrink: 0;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div id="status-dot" class="disconnected"></div>
+  <h1>WS <span>Chat</span></h1>
+  <span id="status-text">Connecting...</span>
+  <span id="online-count">0 online</span>
+</header>
+
+<div class="layout">
+  <aside>
+    <h2>Online</h2>
+    <div id="user-list"></div>
+    <details>
+      <summary>Raw WS frames</summary>
+      <div id="ws-log"></div>
+    </details>
+  </aside>
+
+  <main>
+    <div id="messages"></div>
+    <p class="hint">Tip: type <code>/name YourName</code> to change your display name.</p>
+    <footer>
+      <input id="input" type="text" placeholder="Type a message..." maxlength="500" disabled>
+      <button id="send-btn" disabled>Send</button>
+    </footer>
+  </main>
+</div>
+
+<script>
+  // ── State ──
+  let myId = null, myName = null, myColor = null;
+  let ws = null;
+  let reconnectTimer = null;
+
+  // ── DOM refs ──
+  const statusDot   = document.getElementById('status-dot');
+  const statusText  = document.getElementById('status-text');
+  const onlineCount = document.getElementById('online-count');
+  const userList    = document.getElementById('user-list');
+  const messages    = document.getElementById('messages');
+  const input       = document.getElementById('input');
+  const sendBtn     = document.getElementById('send-btn');
+  const wsLog       = document.getElementById('ws-log');
+
+  // ── WebSocket URL: same host, ws(s) protocol ──
+  function getWsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}`;
+  }
+
+  // ── Logging panel ──
+  function logFrame(dir, text) {
+    const line = document.createElement('div');
+    line.className = dir === 'sent' ? 'log-sent' : dir === 'recv' ? 'log-recv' : 'log-sys';
+    const ts = new Date().toLocaleTimeString('en', { hour12: false });
+    line.textContent = `[${ts}] ${dir === 'sent' ? '>>>' : dir === 'recv' ? '<<<' : '---'} ${text}`;
+    wsLog.appendChild(line);
+    wsLog.scrollTop = wsLog.scrollHeight;
+  }
+
+  // ── Append a chat message to the DOM ──
+  function appendMessage({ type, from, color, text, ts, mine }) {
+    const wrap = document.createElement('div');
+
+    if (type === 'system') {
+      wrap.className = 'msg system';
+      wrap.innerHTML = `<div class="msg-bubble">${escHtml(text)}</div>`;
+    } else {
+      wrap.className = `msg ${mine ? 'mine' : 'other'}`;
+      const time = ts ? new Date(ts).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' }) : '';
+      wrap.innerHTML = `
+        <div class="msg-meta">
+          <span class="msg-author" style="color:${color}">${escHtml(from)}</span>
+          <span>${time}</span>
+        </div>
+        <div class="msg-bubble">${escHtml(text)}</div>`;
+    }
+
+    messages.appendChild(wrap);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  // ── Update sidebar user list ──
+  function renderUsers(users) {
+    onlineCount.textContent = `${users.length} online`;
+    userList.innerHTML = '';
+    users.forEach(u => {
+      const div = document.createElement('div');
+      div.className = `user-item${u.id === myId ? ' me' : ''}`;
+      div.innerHTML = `
+        <span class="user-avatar" style="background:${u.color}"></span>
+        <span style="color:${u.color}">${escHtml(u.name)}${u.id === myId ? ' (you)' : ''}</span>`;
+      userList.appendChild(div);
+    });
+  }
+
+  // ── Send a message ──
+  function sendChat() {
+    const text = input.value.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+    const payload = JSON.stringify({ type: 'chat', text });
+    ws.send(payload);
+    logFrame('sent', payload);
+    input.value = '';
+  }
+
+  // ── Set connected/disconnected UI ──
+  function setConnected(connected) {
+    statusDot.className = connected ? 'connected' : 'disconnected';
+    statusText.textContent = connected ? `Connected as ${myName || '...'}` : 'Disconnected — reconnecting…';
+    input.disabled = !connected;
+    sendBtn.disabled = !connected;
+  }
+
+  // ── Connect ──
+  function connect() {
+    if (ws) ws.close();
+    logFrame('sys', `Connecting to ${getWsUrl()}`);
+    ws = new WebSocket(getWsUrl());
+
+    // ── onopen ──
+    ws.onopen = () => {
+      logFrame('sys', 'Connection established (readyState=OPEN)');
+      clearTimeout(reconnectTimer);
+    };
+
+    // ── onmessage ──
+    ws.onmessage = (event) => {
+      logFrame('recv', event.data);
+      let msg;
+      try { msg = JSON.parse(event.data); } catch { return; }
+
+      switch (msg.type) {
+        case 'welcome':
+          myId    = msg.id;
+          myName  = msg.name;
+          myColor = msg.color;
+          setConnected(true);
+          appendMessage({ type: 'system', text: msg.message });
+          break;
+
+        case 'chat':
+          appendMessage({
+            type: 'chat',
+            from:  msg.from,
+            color: msg.color,
+            text:  msg.text,
+            ts:    msg.ts,
+            mine:  msg.from === myName,
+          });
+          break;
+
+        case 'system':
+          appendMessage({ type: 'system', text: msg.text });
+          break;
+
+        case 'user_list':
+          renderUsers(msg.users);
+          break;
+
+        case 'pong':
+          logFrame('recv', 'pong (heartbeat ok)');
+          break;
+      }
+    };
+
+    // ── onclose ──
+    ws.onclose = (event) => {
+      logFrame('sys', `Connection closed — code=${event.code} reason="${event.reason}"`);
+      setConnected(false);
+      // Auto-reconnect after 3 s
+      reconnectTimer = setTimeout(connect, 3000);
+    };
+
+    // ── onerror ──
+    ws.onerror = (err) => {
+      logFrame('sys', `Error: ${err.type}`);
+    };
+  }
+
+  // ── UI events ──
+  sendBtn.addEventListener('click', sendChat);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+
+  // ── Kick off ──
+  connect();
+
+  // ── Simple XSS guard ──
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+</script>
+</body>
+</html>
