@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev (auto-reload)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 8080
+    },
+    {
+      "name": "start (production)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 8080
+    }
+  ]
+}
